@@ -46,10 +46,22 @@
 #'     printed numbers), bundled PDF file name, Register link}
 #'   \item{afma_iou, afma_layer, afma_flag}{agreement with the AFMA polygon
 #'     (intersection over union) for the 2016 and 2021 directions}
+#'   \item{human_review, reviewed_by, review_date}{check of the boundary by a
+#'     person: `not reviewed`, `correct`, `corrected` or `issue` (see
+#'     [review_log], [review_status()])}
 #' }
+#' @details The boundaries were extracted from the instrument text by code
+#'   written with Claude (Anthropic) and compared with AFMA's polygons, but in
+#'   versions below 1.0.0 they have not been checked by a person.
 #' @source Federal Register of Legislation, <https://www.legislation.gov.au>;
-#'   compiled by CSIRO, October 2026.
+#'   compiled by CSIRO with the assistance of Claude (Anthropic), October 2026.
 "closures"
+
+#' Record of the human review of closure boundaries
+#' @format Data frame, one row per check: `version_id`, `result` (`correct`,
+#'   `corrected`, `issue`), `reviewed_by`, `review_date`, `method`, `notes`.
+#'   Empty until the review starts.
+"review_log"
 
 #' Closures instruments and the dates each was in effect
 #' @format Data frame: `key` (Register ID), `title` (the instrument a

@@ -44,3 +44,9 @@ test_that("bundled files are installed", {
   p <- closure_source(closures$version_id[1])$pdf
   expect_true(file.exists(p))
 })
+
+test_that("review status is recorded for every version", {
+  expect_true(all(c("human_review", "reviewed_by", "review_date") %in% names(closures)))
+  expect_false(anyNA(closures$human_review))
+  expect_equal(sum(review_status()$closure_versions), nrow(closures))
+})

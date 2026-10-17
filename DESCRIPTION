@@ -5,7 +5,12 @@ Version: 0.1.0
 Date: 2026-10-18
 Authors@R: c(
     person("Paul", "Burch", email = "paul.burch77@gmail.com", role = c("aut", "cre"),
-           comment = "CSIRO Environment"))
+           comment = "CSIRO Environment"),
+    person("Claude", role = "ctb",
+           comment = paste("AI assistant (Anthropic, model Claude Opus 5.5).",
+                           "Wrote the parsing, assembly and package code, compiled the",
+                           "closure data and drafted the documentation, directed by",
+                           "the maintainer.")))
 Description: The boundaries of every spatial closure of the Southern and Eastern
     Scalefish and Shark Fishery (SESSF) written in the closures directions on the
     Federal Register of Legislation, from SESSF Direction No. 01 (May 2005) to the
@@ -15,6 +20,7 @@ Description: The boundaries of every spatial closure of the Southern and Eastern
     fishing positions fell inside a closure that applied to them, and give the
     source of each boundary. AFMA's own polygons of the 2016 and 2021 directions are
     included for comparison. Compiled with the assistance of Claude (Anthropic).
+    Versions below 1.0.0 have not had their closure boundaries checked by a person.
 License: BSD_3_clause + file LICENSE
 Copyright: See inst/COPYRIGHTS
 Encoding: UTF-8

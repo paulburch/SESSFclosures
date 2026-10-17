@@ -1,0 +1,12 @@
+bibentry(
+  bibtype = "Manual",
+  title   = "SESSFclosures: Spatial Closures of the Southern and Eastern Scalefish and Shark Fishery, 2005 to Now",
+  author  = person("Paul", "Burch"),
+  year    = "2026",
+  note    = paste0("R package version ", meta$Version,
+                   ". Compiled by CSIRO with the assistance of Claude (Anthropic)",
+                   if (package_version(meta$Version) < "1.0.0") "; closure boundaries not yet checked by a person" else ""),
+  textVersion = paste0("Burch P (2026). SESSFclosures: Spatial Closures of the Southern and Eastern ",
+                       "Scalefish and Shark Fishery, 2005 to Now. R package version ", meta$Version,
+                       ". Compiled by CSIRO with the assistance of Claude (Anthropic).")
+)

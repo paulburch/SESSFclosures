@@ -3,3 +3,11 @@
 .RData
 *.Rproj
 inst/doc
+# rebuilt by data-raw/run_all.R (outputs, downloads, PDF copies)
+data-raw/closures/output/
+data-raw/closures/legislation/
+data-raw/closures/text_pdf/
+data-raw/closures/afma_2016/
+data-raw/closures/afma_2024/
+# personal notes, kept out of the public repository
+GITHUB_SETUP.md

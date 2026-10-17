@@ -45,11 +45,14 @@ An `sf` data frame (polygons, WGS84) with columns:
     printed numbers), bundled PDF file name, Register link}
   \item{afma_iou, afma_layer, afma_flag}{agreement with the AFMA polygon
     (intersection over union) for the 2016 and 2021 directions}
+  \item{human_review, reviewed_by, review_date}{check of the boundary by a
+    person: `not reviewed`, `correct`, `corrected` or `issue` (see
+    [review_log], [review_status()])}
 }
 }
 \source{
 Federal Register of Legislation, <https://www.legislation.gov.au>;
-  compiled by CSIRO, October 2026.
+  compiled by CSIRO with the assistance of Claude (Anthropic), October 2026.
 }
 \usage{
 closures
@@ -60,5 +63,10 @@ boundary and its gear rule did not change. Built from every SESSF closures
 instrument on the Federal Register of Legislation (as made, and the
 compilations), May 2005 to October 2026. Instruments made before 2005 are
 not on the Register.
+}
+\details{
+The boundaries were extracted from the instrument text by code
+  written with Claude (Anthropic) and compared with AFMA's polygons, but in
+  versions below 1.0.0 they have not been checked by a person.
 }
 \keyword{datasets}

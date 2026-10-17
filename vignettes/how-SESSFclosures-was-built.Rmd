@@ -1,0 +1,401 @@
+---
+title: "How SESSFclosures was built"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{How SESSFclosures was built}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+suppressPackageStartupMessages(library(SESSFclosures))
+cl <- sf::st_drop_geometry(closures)
+n_ver <- nrow(cl); n_cl <- length(unique(cl$closure_id)); n_now <- sum(is.na(cl$valid_to))
+n_src <- nrow(instruments); n_pdf <- nrow(legislation)
+```
+
+This vignette records how the closure history in this package was prepared:
+- the steps taken, from finding the legislation to releasing the package;
+- the key instructions that shaped the work;
+- what worked well, what was hard, and what we would do differently.
+
+It is meant for anyone repeating a similar analysis for another fishery or
+jurisdiction, or extending this one.
+
+The work was done over two days (17–18 October 2026) by Paul Burch (CSIRO)
+working with **Claude**, an AI assistant made by Anthropic (model Claude Opus
+5.5), in the Claude Code desktop app on a Windows computer. Paul set the scope
+and made the decisions. Claude:
+- searched for the instruments;
+- wrote and ran the R code (parser, assembly, package);
+- drafted the documents.
+
+Paul saw the results as they came and directed the next steps. A systematic
+human check of the boundaries themselves is still to come (see
+[Review status](#review)).
+
+## Summary
+
+| Step | Result |
+|---|---|
+| Find the legislation | `r n_src` source texts (instruments as made, and compilations) on the Federal Register of Legislation, May 2005 – June 2025 |
+| Extract the text | Register HTML text of each instrument; the `r n_pdf` authorised PDFs, for page references |
+| Parse the boundaries | A rule-based R parser turns the boundary descriptions into polygons |
+| Dates in force | Commencement, revocation, cessation and compilation dates per instrument |
+| Gear rules | Operative clauses classified into the gear each closure closes, and catch triggers |
+| Assemble the history | `r n_cl` closures in `r n_ver` versions, `r n_now` in force now |
+| Validate | Against AFMA's published polygons (2016 and 2021 directions) |
+| Fill gaps | CAPAD polygons for parks defined only by State law |
+| Document | HTML review document; list of questions for AFMA |
+| Package | `SESSFclosures`: data, functions, tests, a self-contained rebuild in `data-raw/` |
+
+## 1. Scoping
+
+The work began as a side question in a session about ISMP strata. Paul asked
+whether closure locations over time could be extracted from the legislation
+"and summarise[d] … in both a document and a file of some kind [please
+suggest the most appropriate type] that can be used for fisheries analyses",
+and said not to start until he confirmed.
+
+Claude proposed:
+- **a GeoPackage**: one polygon per closure per period in force, with dates,
+  gear, source and a quality flag; a vertex layer; a change log; and CSV/WKT
+  copies for non-GIS users;
+- **an R Markdown document** with maps, a timeline and page references.
+
+A GeoPackage was chosen over shapefiles because it holds several layers and
+long text fields in one file, and R (`sf`), Python (`geopandas`), QGIS and
+ArcGIS all read it.
+
+Two early decisions shaped the rest:
+- **Start from the current instrument and work back.** The first pilot
+  covered only the current compilation of the 2021 Closures Direction. The
+  2016 and 2015 directions came next. Only after Paul's instruction to "go
+  back as early as possible" did the scope become every instrument since
+  2005.
+- **Record provenance from the start.** Every polygon carries the instrument
+  and schedule it came from, and a quality flag saying whether it is exact
+  (coordinates only) or depends on an approximated feature.
+
+## 2. Finding the legislation
+
+- **No catalogue to start from.** The closures are written in "directions"
+  made under the *Fisheries Management Act 1991*. Paul referred to "this
+  site" without a link; Claude identified it as the Federal Register of
+  Legislation.
+- **First pass, by hand.** The current Closures Direction's versions page
+  listed its compilations and amending instruments. The compilation's
+  endnotes showed which schedules each amendment changed. Revocation clauses
+  in each direction pointed to its predecessors.
+- **Full catalogue, via the Register API.** For the full history the
+  Register's API (`https://api.prod.legislation.gov.au/v1/`, OData) was
+  searched by title ("closure", "SESSF", "Southern and Eastern Scalefish").
+  That gave 52 instruments from SESSF Direction No. 01 (May 2005) on, with
+  in-force dates and compilations (`data-raw/closures/R/14_catalogue.R`).
+- **Pre-2005 instruments** were published in the Commonwealth Gazette and
+  are not on the Register, so the history starts in 2005.
+- **Text.** Each instrument's text came from the Register's HTML ("epub")
+  view, which keeps the text in reading order. Tables are the exception: cells
+  can be split over lines.
+- **PDFs.** The authorised PDFs were downloaded later for page references
+  (`21_fetch_pdfs.R`). Two URL patterns took trial and error, because the
+  obvious page URL returns an empty web-app shell:
+  - the API document endpoint;
+  - `/{id}/{date}/{date}/text/original/epub/...` for compilations.
+
+## 3. Parsing the boundary descriptions
+
+A schedule describes each closure in words, for example:
+
+> commencing at the intersection of the southern coastline of Kangaroo Island
+> with the meridian of longitude 137° 16′ 59″ east; then south along that
+> meridian to its intersection with the parallel of latitude 36° 00′ 00.8″
+> south; … then westerly and northerly along the mean low water line to the
+> point of commencement.
+
+The parser (`fun_closures.R`, `fun_parse.R`) works in four stages.
+
+**1. Split** each instrument into schedules, each schedule into areas, and
+each area into clauses. Clauses are lettered items, "Then …" sentences, or
+point-table rows.
+
+**2. Read each clause** for three things:
+- the point it reaches (latitude and longitude);
+- the line it travels along: a parallel, meridian, geodesic, the coastline,
+  the outer limit of coastal waters, a line *n* nautical miles seaward, the
+  outer limit of the AFZ, or a State boundary;
+- the feature the end point lies on.
+
+**3. Resolve points that lie on a feature.** For example, "the intersection
+of the coastline with the meridian 137° 16′ 59″ E". A meridian can cross a
+coastline several times. The right crossing is chosen from, in order:
+- the instrument's own words ("southern coastline of Kangaroo Island");
+- the direction of travel ("generally north easterly");
+- "close to" coordinates;
+- a small gazetteer of named headlands ("in the vicinity of Cape
+  Willoughby").
+
+**4. Build the polygon** from the points, the feature-following segments
+between them, circles ("a circle of radius 15 nautical miles"), islands
+("a line 11 nautical miles seaward of … Island"), and exclusions. Then remove
+land.
+
+**Approximated features.** Features the instruments name but do not give as
+coordinates are approximated (`03_features.R`):
+- the coastline: ozmaps, plus Natural Earth for Lord Howe Island;
+- *n* nm lines: buffers of the coastline;
+- the outer limit of coastal waters: a 3 nm buffer with bay and gulf mouths
+  closed (60 km closing, each landmass separately);
+- the AFZ: a 200 nm buffer.
+
+Every closure that uses one is flagged (`quality = "approx_feature"`).
+
+**Drafting styles.** Twenty years of instruments use many styles. Each
+variant below was found by building an instrument, finding the clauses that
+failed, and extending the parser:
+
+| Era | Drafting the parser had to handle |
+|---|---|
+| 2005 | degrees and minutes in words; decimal minutes labelled "seconds"; `''` as the seconds mark; whole degrees without a degree sign ("latitude 41 South"); a Symbol-font character as the degree sign |
+| 2007–2013 | missing or swapped hemisphere words; "1nm"; "Thence" clauses; table cells (number, longitude, "E", latitude, "S") on separate lines; "until … intersects"; "beginning at"; "the point where the line began" |
+| 2013 | the letter "o" as a degree sign; an apostrophe as the decimal point ("40'8″" = 40.8″); a 176-point table numbered in reverse |
+| 2015–2018 | "Then" sentences; un-numbered latitude/longitude line pairs; "SCHEDULE N" with the title on the next line |
+| 2021–2025 | consistent drafting; compilations without clause letters in the Register HTML |
+
+Two clauses could not be read as written. They are corrected before parsing
+by documented regular-expression fixes in `data-raw/closures/data/text_fixes.csv`
+(see `text_fixes`). The coordinates are not changed.
+
+## 4. Dates in force
+
+`19_meta.R` sets each instrument's dates:
+- **Start:** its commencement (stated in the text, or the day after
+  registration).
+- **End:** the earliest of three dates:
+  - its repeal on the Register;
+  - a stated cessation ("ceases to have effect after 1 January 2012");
+  - the end of a stated period ("ending on 31 December 2006").
+- **Compilations:** a compilation replaces the earlier text of its
+  instrument from the compilation date.
+- **Successors:** a direction revoked by its successor ends on the
+  successor's commencement. The Register's date is a day later, which would
+  otherwise make two consolidated directions overlap by one day.
+
+This exposed a real gap: **no consolidated closures direction is on the
+Register between 1 January and 12 July 2007**. Whether the closures lapsed
+or were continued by other means is one of the questions for AFMA.
+
+## 5. Gear rules and triggers
+
+The operative clauses ("Fishing is not to be engaged in using trawl methods
+in the areas described in Schedule 13, 40, 41, 42, and 44") were classified
+into the gear each closure closes. Clauses that close an area only after a
+catch trigger or other condition (dogfish triggers, the Small Pelagic Fishery
+"evidence of benthic impacts" rule) are flagged as `trigger` and kept out of
+the gear.
+
+The classification was checked against gear tables made by hand for the 2015
+and 2021 directions. Several bugs were found that way:
+- Sentences naming several schedules were read only for the first schedule.
+- Contents pages cut off the operative clauses.
+- "Bounded by a line" was read as hook gear.
+
+## 6. Assembling the history
+
+`20_assemble_all.R` takes a snapshot of the areas in force on every date an
+instrument starts or stops. It then links each area to the previous snapshot,
+trying in order:
+1. the same source text and name;
+2. a similar name;
+3. more than half overlap (intersection over union).
+
+A new **version** starts when the boundary changes by 0.5 km² or more, or the
+gear rule or trigger changes. A closure that lapses and returns within about
+a year keeps its ID. The output is the GeoPackage, with layers for closures,
+vertices, instruments, PDFs and pages, other measures, areas not mapped,
+changes, and AFMA's polygons.
+
+## 7. Validation
+
+- **Within the legislation.** Each instrument was parsed independently, so
+  successive instruments that restate a closure check each other: an
+  unchanged closure should give the same polygon. Maps of the closures in
+  force on selected dates were checked by eye, which caught several gross
+  errors:
+  - a coastline crossing taken on the north coast of Australia;
+  - spikes from misread point tables;
+  - depth closures missing their AFZ edge.
+- **Against AFMA.** AFMA publishes polygons of the 2016 direction (one file
+  per schedule) and the 2021 direction (a 2024 bundle). Both were downloaded
+  with Paul's permission and compared:
+  - Closures written wholly as coordinates match AFMA's to an
+    intersection-over-union (IoU) of 0.98 or more.
+  - The exception is Schedule 30, where AFMA's polygon has a spike that is not
+    in the instrument.
+  - Closures following approximated features agree to an IoU of 0.84–0.98.
+    These are the best measure of how good the approximations are.
+- **Other checks.** Areas were compared with gazetted figures where known.
+  For example, the CAPAD marine parks: Kent Group 299 km² against 297 km²
+  gazetted.
+
+## 8. Filling the gaps
+
+- **Parks defined only by State law.** The Kent Group National Park and the
+  Victorian marine national parks are defined in the instruments by reference
+  to State law, with no coordinates. Their polygons were taken from CAPAD 2022
+  Marine (`quality = "capad_2022"`), with the caveat that they show the
+  boundaries as at June 2022.
+- **Questions for AFMA.** Problems found in the instruments were collected as
+  questions for AFMA:
+  - the 2007 gap;
+  - a Western Isles position that falls on land;
+  - Schedule 44 (2023) repeating Point 1;
+  - the reversed 2013 table;
+  - the Schedule 30 spike;
+  - records of when trigger closures were triggered.
+
+## 9. The R package
+
+The package was built from the GeoPackage. Its parts:
+
+| Part | Content |
+|---|---|
+| Data | `closures` and the supporting tables, as lazy-loaded data |
+| Bundled files | the GeoPackage and the authorised PDFs, in `inst/` |
+| Functions | `closures_on()`, `in_closure()` (shots inside a closure that applied to their gear), `closure_history()`, `closure_source()`, `closure_pdf()`, `gear_applies()`, `afma_polygons()`, `plot_closures()`, `review_status()` |
+| Tests and checks | testthat tests; `R CMD check` |
+
+Preparing it for public release on GitHub took these steps:
+- a BSD 3-clause licence, with the bundled data's own terms in
+  `inst/COPYRIGHTS`;
+- a public README;
+- removing every path to Paul's computer;
+- making `data-raw/` self-contained, so `Rscript data-raw/run_all.R`
+  rebuilds everything from the instrument texts. This was verified by
+  rebuilding from a clean copy and comparing the result field by field;
+- acknowledging Claude as a contributor;
+- a record of the human review (below).
+
+Building the package also improved the data: page-reference and gear-rule
+bugs were found and fixed while writing tests and documentation.
+
+## Key prompts
+
+These are the instructions that most shaped the work, lightly abridged,
+with what each led to.
+
+| Prompt (Paul) | What it led to |
+|---|---|
+| "…are you able to extract the locations of closures over time from this site and summarise them in both a document and an file of some kind [please suggest the most appropriate type] that can be used for fisheries analyses" | Scoping; the GeoPackage and Rmd proposal. Asking Claude to *suggest* the format, and to wait for confirmation, gave a chance to agree the design first. |
+| "…Write to the document, files and Claude.md regularly so you don't exceed the session limit or your context limit. I'm going to be away from my computer for a while, can you push notifications to the claude app on my phone please" | A progress log (`PROGRESS.md`) kept up to date throughout, which let the work survive context resets and a mid-run pause. Push notifications at milestones. |
+| "Yes download the shape files and yes go back as early as possible" | Validation against AFMA, and the extension from 2015 back to 2005, the largest single expansion of scope. |
+| "Also download all of the documents that contain the legislated boundaries and reference them, including page numbers of where the closure boundaries are specified" | The PDFs, `boundary_pages`, and `source_ref` on every closure. |
+| "use CAPAD polygons for Kent Group and Victorian marine parks, draft an email to AFMA with the questions, create an R package with the closure details 'SESSFclosures'" | The CAPAD fill-in, the AFMA questions and this package. |
+| "reword the README for public release, also please remove the paths to the files on my machine from the scripts in the package. Make it selfcontained" | The self-contained `data-raw/` rebuild, which in turn exposed the page-reference bug. |
+| "Make sure Claude is appropriately acknowledged… Closure boundaries have yet to be checked by a human… perhaps in the NEWS file and we could update the package number to 1.0.0 when that happens" | The contributor entry, `NEWS.md`, the review log and `review_status()`. |
+| "Does the package include the trawl closures that was implemented in south eastern Australia in 2023 or 2024?" | A spot check of a known recent change; it led to finding the incomplete page references. |
+
+## What worked well
+
+- **Working from the current instrument back.** The pilot on one compilation
+  produced a usable result early and a parser that later instruments only
+  needed to extend.
+- **Independent builds as checks.** Each instrument is parsed on its own, so
+  the many restatements of the same closure across 20 years act as built-in
+  replicate measurements. Differences between successive builds were either
+  real changes or parser bugs, and were easy to tell apart.
+- **An external benchmark.** AFMA's polygons gave an objective accuracy
+  measure. They also separated the two kinds of error: parsing errors, which
+  should be zero for coordinate-only closures, and approximation error.
+- **Provenance and quality flags on every row.** `source_ref`, `quality` and
+  `notes` let users decide how far to trust each closure, and make review
+  practical.
+- **Maps of snapshots.** Plotting everything in force on a date caught gross
+  errors that tables did not.
+- **A written progress log and memory notes.** They allowed the work to
+  continue across several context resets and a pause for a session limit.
+- **Fixing drafting problems in data, not code.** Documented corrections
+  (`text_fixes.csv`) keep unusual drafting visible and reviewable.
+- **Asking before outward-facing steps.** Downloads from AFMA, publishing and
+  sending email were confirmed with Paul first. The AFMA email was drafted,
+  not sent, and GitHub publication was left to Paul.
+
+## What was challenging
+
+- **Drafting variation.** Most of the effort went into the long tail of
+  drafting styles and typing errors in older instruments. Each fix risked
+  breaking something that already worked. One did: allowing a schedule title
+  to start with a digit, for the 2005 title "41 South", made cross-references
+  like "Schedule 32." look like headings. The polygons were unaffected, but
+  page references were wrong until a later full rebuild caught it.
+- **Features with no coordinates.** The coastline, coastal waters and AFZ
+  are defined in law by baselines and charts not available here. The
+  approximations are the main source of error, and choosing the right
+  coastline crossing needed several layered rules.
+- **Linking areas over time.** Schedules are renumbered between directions,
+  names change slightly, and a closure can be split, merged or lapse.
+  Linking by source, then name, then overlap works, but the thresholds are
+  judgement calls.
+- **Dates.** Commencement and repeal are recorded inconsistently. The
+  Register's end dates overlap successors by a day, older directions expire
+  by stated period, and one gap (2007) may be real or an artefact of what is
+  on the Register.
+- **Gear rules.** The operative clauses are free text. Contents pages,
+  conditional rules and multi-schedule sentences all caused misclassification
+  that was found only when checking against hand-made tables.
+- **Tooling on Windows.**
+  - Paths over 260 characters.
+  - Shell quoting: regular expressions passed through `sed`, PowerShell or
+    `Rscript -e` were mangled more than once, so editing files directly was
+    safer.
+  - Spherical geometry in `sf` rejecting some approximated rings.
+  - PDF and HTML text extraction giving different layouts of the same table.
+- **Scale and context.** The work outgrew a single context window several
+  times. Without the progress log, earlier decisions would have been lost.
+
+## Advice for a similar analysis
+
+1. **Agree outputs and provenance first.** Decide the output format, the
+   unit of record (closure version) and the provenance fields before parsing
+   anything.
+2. **Build the catalogue from the API first.** List every instrument, its
+   compilations and its in-force dates before parsing. Then the full scope
+   and the dates are known up front, not found piecemeal.
+3. **Get the external benchmark early.** If the agency publishes polygons,
+   download them at the start and compare as each instrument is built. Ask
+   the agency for its legal lines (coastal waters, AFZ) as well; that would
+   remove most of the approximation error.
+4. **Keep a regression suite from day one.** Record the expected area, or a
+   checksum of each polygon, for every instrument already parsed, and rerun
+   it after every parser change. The heading regression above would have been
+   caught at once.
+5. **Prefer data fixes for one-off drafting.** Keep the parser for patterns
+   that recur, and put one-off oddities in a corrections table with a note.
+6. **Map every snapshot.** Make a map of what was in force at regular dates
+   and look at them as the work goes; it is the fastest check there is.
+7. **Track page references and rules alongside geometry.** They are easy to
+   neglect and need their own checks.
+8. **Plan the human review as part of the work.** Use a per-version review
+   log, a clear status flag, and a version number that only reaches 1.0.0
+   after review.
+9. **Keep one copy of the pipeline.** Here the scripts exist both in the
+   original working folder and in the package's `data-raw/`. Keep only the
+   package copy, or generate one from the other, so they cannot drift.
+10. **Write progress down as you go.** With an AI assistant, a progress file
+    and explicit instructions to update it let long jobs survive interruptions.
+    Ask for notifications at milestones if you will be away.
+11. **Spot-check with questions you already know the answer to**, such as "Is
+    the 2023 Gabo closure there?". It is cheap and finds problems.
+
+## Review status {#review}
+
+Version `r utils::packageVersion("SESSFclosures")` has **not** had its
+closure boundaries checked by a person (`review_status()`). The review will
+be recorded closure by closure in `data-raw/closures/review/review_log.csv`
+and described in `NEWS.md`, and the package will become version 1.0.0 when
+it is complete.
+
+```{r}
+knitr::kable(review_status(), caption = "Closure versions by human review status.")
+```
