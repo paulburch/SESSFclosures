@@ -1,0 +1,65 @@
+---
+title: "Using SESSFclosures"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Using SESSFclosures}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, message = FALSE}
+library(SESSFclosures)
+sf::sf_use_s2(FALSE)
+```
+
+## What is in the package
+
+`closures` has one row per **closure version**: a closure area over a period
+in which neither its boundary nor its gear rule changed.
+
+```{r}
+nrow(closures); length(unique(closures$closure_id))
+table(closures$quality)
+range(closures$valid_from)
+```
+
+## Closures in force on a date
+
+```{r, fig.width = 7, fig.height = 4.5}
+x <- closures_on("2013-07-01", gear = "gillnet")
+x[, c("closure_id", "area", "gear_closed", "valid_from", "valid_to")]
+plot_closures("2013-07-01")
+```
+
+## Was a shot inside a closure that applied to it?
+
+```{r}
+shots <- data.frame(
+  lon  = c(148.20, 150.30, 137.30, 155.80),
+  lat  = c(-39.50, -37.50, -36.01, -28.00),
+  date = as.Date(c("2010-03-01", "2024-06-01", "2008-01-01", "2020-01-01")),
+  gear = c("TW", "TW", "GN", "TW"))
+in_closure(shots, gear = "gear")
+```
+
+`applies` compares the closure's `gear_closed` with the shot's gear
+(`gear_applies()`); `trigger = TRUE` marks closures that apply only after a
+catch trigger or other condition (e.g. dogfish), which the shot data alone
+cannot resolve.
+
+## Where a boundary is written
+
+```{r}
+h <- closure_history("Bass Strait")
+sf::st_drop_geometry(h)[, c("version_id", "valid_from", "valid_to", "change")]
+closure_source(h$version_id)[, c("version_id", "source_ref", "register_url")]
+```
+
+`closure_pdf("C001_v2")` opens the bundled authorised PDF at that page.
+
+## Accuracy
+
+Closures given wholly by coordinates match AFMA's own polygons (IoU >= 0.98).
+Those that follow the coastline, coastal waters or the AFZ are approximated
+(`quality == "approx_feature"`, IoU 0.84-0.98 against AFMA); near those edges
+use `afma_polygons()` (2016 and 2021 directions) or the instrument itself.

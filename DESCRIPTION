@@ -1,0 +1,37 @@
+Package: SESSFclosures
+Type: Package
+Title: Spatial Closures of the Southern and Eastern Scalefish and Shark Fishery, 2005 to Now
+Version: 0.1.0
+Date: 2026-10-18
+Authors@R: c(
+    person("Paul", "Burch", email = "paul.burch77@gmail.com", role = c("aut", "cre"),
+           comment = "CSIRO Environment"))
+Description: The boundaries of every spatial closure of the Southern and Eastern
+    Scalefish and Shark Fishery (SESSF) written in the closures directions on the
+    Federal Register of Legislation, from SESSF Direction No. 01 (May 2005) to the
+    current compilation of the 2021 Closures Direction, with the dates each boundary
+    was in force, the gear it closes, and the instrument, schedule and page where it
+    is written. Functions return the closures in force on a date, test whether
+    fishing positions fell inside a closure that applied to them, and give the
+    source of each boundary. AFMA's own polygons of the 2016 and 2021 directions are
+    included for comparison. Compiled with the assistance of Claude (Anthropic).
+License: BSD_3_clause + file LICENSE
+Copyright: See inst/COPYRIGHTS
+Encoding: UTF-8
+LazyData: true
+LazyDataCompression: xz
+Depends:
+    R (>= 4.1.0),
+    sf
+Imports:
+    graphics,
+    grDevices,
+    utils
+Suggests:
+    ozmaps,
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+RoxygenNote: 7.3.2

@@ -1,0 +1,18 @@
+SESSFclosures: copyright and attribution of bundled data
+
+Package code and derived closure polygons: (c) 2026 CSIRO, BSD 3-clause licence
+(see LICENSE).
+
+The data are compiled from public sources, which keep their own terms:
+
+- Closure boundaries are derived from instruments on the Federal Register of
+  Legislation (https://www.legislation.gov.au), (c) Commonwealth of Australia,
+  CC BY 4.0. The authorised PDFs in inst/legislation are unaltered copies. The
+  polygons interpret the text and are NOT the legal description; the
+  instrument prevails.
+- AFMA polygons (GeoPackage layers afma_2016, afma_2024): Australian Fisheries
+  Management Authority, published at https://www.afma.gov.au. AFMA does not
+  warrant their accuracy, completeness or currency.
+- CAPAD 2022 Marine polygons (Kent Group National Park; Cape Howe, Discovery
+  Bay and Twelve Apostles Marine National Parks): Department of Climate
+  Change, Energy, the Environment and Water, CC BY 4.0.
